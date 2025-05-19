@@ -1,0 +1,17 @@
+Potential Enhancement Ideas
+1. Security Improvements
+Token Revocation on Password Change: Invalidate all outstanding tokens if the user changes their password.
+Shorter/Configurable Blacklist Expiry: Allow configurable expiry for blacklisted JTIs depending on token lifetime.
+Replay Attack Protection: Add more robust protection and monitoring for repeated use of tokens (especially refresh tokens).
+Algorithm Flexibility: Enforce strict algorithm whitelisting and reject tokens with "none" or weak algos.
+Token Audience/Issuer Claims: Add support for audience (aud) and issuer (iss) claims, with validation.
+2. Extensibility and Abstraction
+Pluggable Storage Backends: Make it easier to add new TokenStorage implementations (e.g., file, database, memory cache) via dependency injection or service discovery.
+Events or Hooks: Trigger events/hooks on generate, validate, refresh, and blacklist for extensibility.
+3. Usability & Developer Experience
+Static Analysis/DOC Comments: Add PHPDoc comments for all public methods, describing parameters and return types.
+Exception Transparency: Optionally expose exception reasons (e.g., invalid signature, expired) to callers.
+Configurable Leeway: JWT validation could allow a small leeway window for clock skew.
+4. Testing and Reliability
+Unit Tests: Add or enhance automated test coverage for Auth, storages, and edge cases.
+CI Integration: Provide a sample GitHub Actions/CI configuration.
