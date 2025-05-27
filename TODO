@@ -1,3 +1,15 @@
+skeleton
+--------
+Add my ORM in require
+add other dependencies
+add routing
+add php-di 
+add App-Class
+add public/index.php
+add LoginCntroller and WebUserController and example twig views  
+
+jwt-auth
+--------
 Potential Enhancement Ideas
 1. Security Improvements
 Token Revocation on Password Change: Invalidate all outstanding tokens if the user changes their password.

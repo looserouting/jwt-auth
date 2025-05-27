@@ -1,11 +1,23 @@
 {
+  "name": "looserouting/skeleton",
+  "description": "Ein einfaches PHP Framework Skeleton",
+  "type": "project",
+  "license": "MIT",
   "require": {
+    "php": "^8.1",
     "firebase/php-jwt": "^6.0",
     "vlucas/phpdotenv": "^5.5"
   },
   "autoload": {
     "psr-4": {
-      "JwtAuth\\": "src/"
+      "App\\": "src/"
     }
-  }
+  },
+  "scripts": {
+    "post-create-project-cmd": [
+      "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
+    ]
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
 }
