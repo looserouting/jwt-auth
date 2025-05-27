@@ -1,12 +1,11 @@
 skeleton
 --------
-Add my ORM in require
-add other dependencies
 add routing
 add php-di 
 add App-Class
 add public/index.php
-add LoginCntroller and WebUserController and example twig views  
+add LoginCntroller and WebUserController and example twig views
+put jwt-auth into his own library
 
 jwt-auth
 --------
