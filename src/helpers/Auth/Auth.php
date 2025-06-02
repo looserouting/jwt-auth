@@ -8,10 +8,10 @@ use JwtAuth\Storage\TokenStorageInterface;
 
 class Auth
 {
-    private ConfigVO $config;
+    private Config $config;
     private TokenStorageInterface $storage;
 
-    public function __construct(ConfigVO $config, TokenStorageInterface $storage)
+    public function __construct(Config $config, TokenStorageInterface $storage)
     {
         $this->config = $config;
         $this->storage = $storage;
