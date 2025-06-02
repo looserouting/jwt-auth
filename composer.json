@@ -1,33 +1,17 @@
 {
-  "name": "looserouting/skeleton",
-  "description": "Ein einfaches PHP Framework Skeleton",
+  "name": "looserouting/jwt-auth",
+  "description": "jwt auth library with Access-Token, Refresh-Token and Token-Revocation",
   "type": "project",
   "license": "MIT",
-    "repositories": [
-    {
-      "type": "vcs",
-      "url": "https://github.com/looserouting/orm.git"
-    }
-  ],
   "require": {
     "php": "^8.1",
     "firebase/php-jwt": "^6.0",
-    "vlucas/phpdotenv": "^5.6",
-    "looserouting/orm": "main",
-    "twig/twig": "^3.20",
-    "nikic/fast-route": "^1.3",
-    "php-di/php-di": "^7.0",
-    "psr/container": "^2.0"
+    "vlucas/phpdotenv": "^5.6"
   },
   "autoload": {
     "psr-4": {
-      "App\\": "src/"
+      "JwtAuth\\": "src/"
     }
-  },
-  "scripts": {
-    "post-create-project-cmd": [
-      "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
-    ]
   },
   "minimum-stability": "stable",
   "prefer-stable": true
