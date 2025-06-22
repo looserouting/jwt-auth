@@ -80,7 +80,7 @@ class Auth
                 return null;
             }
 
-            // Refresh-Token blacklistieren
+            // Refresh-Token blacklisten
             $this->storage->blacklist($decoded->jti);
 
             // Neue Tokens ausstellen

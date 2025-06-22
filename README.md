@@ -2,17 +2,18 @@
 jwt auth library wir Access-Token, Refresh-Token and Token-Revocation
 
 # Exmaple Usage
+```php
 <?php
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use JwtAuth\Auth;
-use JwtAuth\ConfigVO;
+use JwtAuth\Config;
 use Dotenv\Dotenv;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../');
 $dotenv->load();
 
-$config = new ConfigVO(
+$config = new Config(
     secret: $_ENV['JWT_SECRET'],
     algo: $_ENV['JWT_ALGO'] ?? 'HS256',
     accessTokenTTL: (int)($_ENV['JWT_ACCESS_TTL'] ?? 900),
@@ -33,3 +34,4 @@ echo "Benutzer-ID: " . ($userId ?? 'Ungültig') . "\n";
 
 // Beispiel: Refresh
 $newTokens = $auth->refresh($tokens['refresh']);
+```
