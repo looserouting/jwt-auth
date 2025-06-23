@@ -35,3 +35,18 @@ echo "Benutzer-ID: " . ($userId ?? 'Ungültig') . "\n";
 // Beispiel: Refresh
 $newTokens = $auth->refresh($tokens['refresh']);
 ```
+
+# Explanation of the New Configuration Options:
+
+`accessTokenCookieName`, `refreshTokenCookieName`, `csrfTokenCookieName`: Names of the cookies.
+`csrfTokenLength`: The length of the generated CSRF token in bytes (converted to hex).
+`cookieDomain`: The domain for which the cookie is valid (e.g., yourdomain.com or .yourdomain.com for subdomains). Leave empty to use the current domain.
+`cookiePath`: The path for which the cookie is valid (e.g., / for the entire website).
+cookieSecure: Set this to true in production if your site runs over HTTPS. Cookies will then only be sent over secure connections.
+`cookieSameSite`: Protects against CSRF attacks by controlling when cookies are sent with cross-site requests.
+
+`Lax` (default): Cookies are sent with top-level navigations (GET requests) and same-site requests.
+
+`Strict`: Cookies are only sent with same-site requests.
+
+`None`: Cookies are sent with all requests, but requires `Secure=true`.
