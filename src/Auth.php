@@ -26,6 +26,8 @@ class Auth
     public function generateTokens(string $userId): array // Changed return type hint in docblock
     {
         $now = time();
+        $csrfToken = bin2hex(random_bytes($this->config->csrfTokenLength));
+        $csrfHash = hash('sha256', $csrfToken);
 
         $accessJti = bin2hex(random_bytes(16));
         $accessToken = JWT::encode([
@@ -33,6 +35,7 @@ class Auth
             'jti' => $accessJti,
             'iat' => $now,
             'exp' => $now + $this->config->accessTokenTTL,
+            'csrf' => $csrfHash, // CSRF Token Binding
         ], $this->config->secret, $this->config->algo);
 
         $refreshJti = bin2hex(random_bytes(16));
@@ -43,8 +46,6 @@ class Auth
             'exp' => $now + $this->config->refreshTokenTTL,
         ], $this->config->secret, $this->config->algo);
 
-        $csrfToken = bin2hex(random_bytes($this->config->csrfTokenLength));
-
         return [
             'access' => $accessToken,
             'refresh' => $refreshToken,
@@ -53,7 +54,8 @@ class Auth
     }
 
     /**
-     * Setzt Access-, Refresh- und CSRF-Tokens als HTTP-only Cookies.
+     * Setzt Access- und Refresh-Tokens als HTTP-only Cookies und den CSRF-Token
+     * als reguläres, für JavaScript lesbares Cookie.
      *
      * @param string $userId
      * @return string Der generierte CSRF-Token (für die Client-Antwort).
@@ -153,16 +155,41 @@ class Auth
     }
 
     /**
-     * Validiert einen CSRF-Token.
+     * Validiert einen CSRF-Token mittels "Double Submit Cookie" und "Token Binding".
+     * Der Access-Token muss hier mitübergeben werden, um den darin enthaltenen
+     * CSRF-Hash zu vergleichen.
      *
      * @param string $requestCsrfToken Der CSRF-Token aus dem Request-Header (z.B. X-CSRF-TOKEN).
      * @param string $cookieCsrfToken Der CSRF-Token aus dem Cookie (z.B. $_COOKIE['X-CSRF-TOKEN']).
-     * @return bool True, wenn die Tokens übereinstimmen, sonst false.
+     * @param string $accessToken Der Access-Token, typischerweise aus dem Cookie.
+     * @return bool True, wenn die Tokens gültig und aneinander gebunden sind, sonst false.
      */
-    public function validateCsrfToken(string $requestCsrfToken, string $cookieCsrfToken): bool
+    public function validateCsrfToken(string $requestCsrfToken, string $cookieCsrfToken, string $accessToken): bool
     {
-        // Use hash_equals for timing attack safe comparison
-        return hash_equals($requestCsrfToken, $cookieCsrfToken);
+        // 1. Standard "Double Submit" Prüfung: Stimmen Header und Cookie überein?
+        if (empty($requestCsrfToken) || !hash_equals($cookieCsrfToken, $requestCsrfToken)) {
+            return false;
+        }
+
+        // 2. "Token Binding" Prüfung: Ist der CSRF-Token an den Access-Token gebunden?
+        try {
+            $decodedAccessToken = JWT::decode($accessToken, new Key($this->config->secret, $this->config->algo));
+
+            // Prüfen, ob der 'csrf'-Claim im Access-Token existiert
+            if (!isset($decodedAccessToken->csrf)) {
+                return false;
+            }
+
+            // Hash des übermittelten CSRF-Tokens berechnen
+            $requestCsrfHash = hash('sha256', $requestCsrfToken);
+
+            // Vergleichen des Hash aus dem Access-Token mit dem berechneten Hash
+            return hash_equals($decodedAccessToken->csrf, $requestCsrfHash);
+        } catch (\Throwable) {
+            // Wenn der Access-Token ungültig ist (z.B. abgelaufen, falsche Signatur),
+            // ist die CSRF-Prüfung ebenfalls fehlgeschlagen.
+            return false;
+        }
     }
 
     /**
@@ -192,22 +219,25 @@ class Auth
     }
 
     /**
-     * JWT-Token manuell sperren (z. B. beim Logout).
+     * JWT-Token manuell sperren und Auth-Cookies löschen (z.B. beim Logout).
+     * Das Löschen der Cookies wird immer versucht, auch wenn der Token ungültig ist.
      */
     public function blacklist(string $token): bool // Added clearAuthCookies
     {
+        $isBlacklisted = false;
         try {
             $decoded = JWT::decode($token, new Key($this->config->secret, $this->config->algo));
 
             if (isset($decoded->jti)) {
                 $this->storage->blacklist($decoded->jti);
-                $this->clearAuthCookies(); // Clear cookies on blacklist/logout
-                return true;
+                $isBlacklisted = true;
             }
         } catch (\Throwable) {
-            // token war nicht dekodierbar – ignorieren
+            // Token war nicht dekodierbar (z.B. abgelaufen, ungültig).
+            // Das Blacklisting ist nicht möglich, aber die Cookies müssen trotzdem gelöscht werden.
         }
-
-        return false;
+        
+        $this->clearAuthCookies(); // Wichtig: Immer Cookies löschen beim Logout-Versuch.
+        return $isBlacklisted;
     }
 }

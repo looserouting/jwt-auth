@@ -19,7 +19,7 @@ function getCookie(name) {
  * @returns {Promise<Response|null>} The fetch Response object or null if refresh fails.
  */
 async function authenticatedFetch(url, options = {}) {
-    const csrfToken = getCookie('X-CSRF-TOKEN'); // Read CSRF token from the cookie
+    const csrfToken = getCookie('X-CSRF-TOKEN'); // Read CSRF token from the non-HttpOnly cookie
 
     if (csrfToken) {
         options.headers = {
@@ -27,8 +27,9 @@ async function authenticatedFetch(url, options = {}) {
             'X-CSRF-TOKEN': csrfToken, // Add CSRF token to a custom header
         };
     } else {
-        console.warn('CSRF token not found in cookie. Request might fail.');
-        // Depending on your security policy, you might want to throw an error or redirect to login.
+        // For state-changing requests (POST, PUT, DELETE), the absence of a CSRF token
+        // will likely cause the server to reject the request.
+        console.warn('CSRF token cookie not found. State-changing requests may fail.');
     }
 
     const response = await fetch(url, options);
@@ -71,10 +72,9 @@ async function login(username, password) {
         if (response.ok) {
             const data = await response.json();
             console.log('Login successful!', data);
-            // The HTTP-only access and refresh tokens are now set as cookies by the server.
-            // The CSRF token is also set as a non-HTTP-only cookie (X-CSRF-TOKEN).
-            // If your server also returns the CSRF token in the response body, you can use it here:
-            // const csrfTokenFromBody = data.csrf_token;
+            // The server has set the HttpOnly access/refresh token cookies and the
+            // regular X-CSRF-TOKEN cookie. The response body also contains the new
+            // CSRF token (`data.csrf_token`), which could be used by a SPA for immediate state updates.
             return true;
         } else {
             const errorData = await response.json();
@@ -102,8 +102,8 @@ async function refreshToken() {
         if (response.ok) {
             const data = await response.json();
             console.log('Token refresh successful!', data);
-            // New access, refresh, and CSRF cookies are set by the server.
-            // The new CSRF token is also returned in the response body if your server does so.
+            // The server has set new HttpOnly access/refresh token cookies and a new
+            // X-CSRF-TOKEN cookie. The response also contains the new CSRF token (`data.csrf_token`).
             return true;
         } else {
             console.error('Token refresh failed.');
@@ -169,11 +169,13 @@ async function logout() {
 // });
 
 // Initial check (e.g., on page load)
-// if (getCookie('access_token')) { // Check for the presence of the access token cookie (though HTTP-only, this check is for conceptual understanding if you had a non-HTTP-only flag for some reason, or if you're checking for the CSRF cookie instead)
-//     console.log('User might be authenticated. CSRF token cookie:', getCookie('X-CSRF-TOKEN'));
-// } else {
-//     console.log('User not authenticated.');
-// }
+if (getCookie('X-CSRF-TOKEN')) {
+    // The presence of the CSRF cookie is a good client-side indicator that a user *might* be logged in.
+    // The HttpOnly access token cookie cannot be checked from JavaScript.
+    console.log('User appears to be authenticated. CSRF token found.');
+} else {
+    console.log('User does not appear to be authenticated (no CSRF token cookie).');
+}
 
 /*
 Erläuterung der Client-seitigen Logik:
@@ -183,9 +185,9 @@ authenticatedFetch(url, options):
 Dies ist eine Wrapper-Funktion um die native fetch-API.
 Sie liest den CSRF-Token aus dem X-CSRF-TOKEN-Cookie.
 Fügt den gelesenen CSRF-Token als X-CSRF-TOKEN-Header zu jeder Anfrage hinzu. Ihr Backend muss diesen Header dann validieren.
-Behandelt 401 (Unauthorized) Antworten, indem versucht wird, den Token über die refreshToken()-Funktion zu erneuern. Bei Erfolg wird die ursprüngliche Anfrage wiederholt.
-login(username, password): Sendet Anmeldeinformationen an Ihr Backend. Das Backend sollte daraufhin die HTTP-only JWTs und den nicht-HTTP-only CSRF-Cookie setzen.
-refreshToken(): Sendet eine Anfrage an Ihr Backend, um die Tokens zu erneuern. Der Browser sendet den HTTP-only Refresh-Token-Cookie automatisch mit. Das Backend sollte dann neue HTTP-only JWTs und einen neuen CSRF-Cookie setzen.
+Behandelt 401 (Unauthorized) Antworten, indem es versucht, den Token über die refreshToken()-Funktion zu erneuern. Bei Erfolg wird die ursprüngliche Anfrage wiederholt.
+login(username, password): Sendet Anmeldeinformationen an Ihr Backend. Das Backend setzt daraufhin die HTTP-only JWTs und den nicht-HTTP-only CSRF-Cookie. Die Server-Antwort enthält zusätzlich den CSRF-Token im Body.
+refreshToken(): Sendet eine Anfrage an Ihr Backend, um die Tokens zu erneuern. Der Browser sendet den HTTP-only Refresh-Token-Cookie automatisch mit. Das Backend setzt dann neue HTTP-only JWTs und einen neuen CSRF-Cookie und gibt den neuen CSRF-Token auch im Body der Antwort zurück.
 logout(): Sendet eine Anfrage zum Abmelden. Das Backend sollte die Tokens auf die Blacklist setzen und die Cookies löschen.
 Wichtige Sicherheitshinweise für die Client-Seite:
 
