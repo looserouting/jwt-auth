@@ -8,6 +8,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use JwtAuth\Auth;
 use JwtAuth\Config;
+use JwtAuth\FileTokenStorage;
 use Dotenv\Dotenv;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../');
@@ -18,10 +19,9 @@ $config = new Config(
     algo: $_ENV['JWT_ALGO'] ?? 'HS256',
     accessTokenTTL: (int)($_ENV['JWT_ACCESS_TTL'] ?? 900),
     refreshTokenTTL: (int)($_ENV['JWT_REFRESH_TTL'] ?? 604800),
-    storagePath: $_ENV['JWT_STORAGE_PATH'] ?? __DIR__ . '/../storage'
 );
-
-$auth = new Auth($config);
+$storage = new FileTokenStorage($_ENV['JWT_STORAGE_PATH']);
+$auth = new Auth($config, $storage);
 
 // Beispiel: Login
 $tokens = $auth->generateTokens('user_123');
