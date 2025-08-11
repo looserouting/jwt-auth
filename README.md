@@ -2,6 +2,7 @@
 jwt auth library wir Access-Token, Refresh-Token and Token-Revocation
 
 # Exmaple Usage
+## Configuration
 ```php
 <?php
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -22,17 +23,23 @@ $config = new Config(
 );
 $storage = new FileTokenStorage($_ENV['JWT_STORAGE_PATH']);
 $auth = new Auth($config, $storage);
+```
 
-// Beispiel: Login
-$tokens = $auth->generateTokens('user_123');
-echo "Access: {$tokens['access']}\n";
-echo "Refresh: {$tokens['refresh']}\n";
+## generate token and set cookies
+```php
+$auth = new JwtAuth\Auth($config, $storage);
+$csrfToken = $auth->issueAuthCookies('user_123');
+echo json_encode(['csrf_token' => $csrfToken]);
+```
 
-// Beispiel: Prüfung
+## validate tokens
+```php
+$tokens = auth->getTokens();
 $userId = $auth->validate($tokens['access']);
-echo "Benutzer-ID: " . ($userId ?? 'Ungültig') . "\n";
+echo "User-ID: " . ($userId ?? 'unknown') . "\n";
+```
 
-// Beispiel: Refresh
+## refresh token
 $newTokens = $auth->refresh($tokens['refresh']);
 ```
 

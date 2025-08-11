@@ -11,12 +11,31 @@ class Auth
     private Config $config;
     private TokenStorageInterface $storage;
 
+
     public function __construct(Config $config, TokenStorageInterface $storage)
     {
         $this->config = $config;
         $this->storage = $storage;
     }
 
+        /**
+     * Liest Access-Token, Refresh-Token und CSRF-Token aus den Cookies aus.
+     *
+     * @return array{access: ?string, refresh: ?string, csrf: ?string}
+     */
+    public function getTokens(): array
+    {
+        $access = $_COOKIE[$this->config->accessTokenCookieName] ?? null;
+        $refresh = $_COOKIE[$this->config->refreshTokenCookieName] ?? null;
+        $csrf = $_COOKIE[$this->config->csrfTokenCookieName] ?? null;
+        return [
+            'access' => $access,
+            'refresh' => $refresh,
+            'csrf' => $csrf,
+        ];
+    }
+
+    
     /**
      * Erzeugt ein Access- und ein Refresh-Token für eine Benutzer-ID.
      * Sowie einen CSRF-Token.
@@ -239,5 +258,20 @@ class Auth
         
         $this->clearAuthCookies(); // Wichtig: Immer Cookies löschen beim Logout-Versuch.
         return $isBlacklisted;
+    }
+
+    // TODO großes TODO. Die Funktion muss angepasst werden.
+    function checkAndRefreshTokens($token) {
+        $userId = $auth->validate(); // prüft Access-Token aus Cookie
+        if ($userId !== null) {
+            return $userId; // Access-Token gültig
+        }
+        // Access-Token ungültig, prüfe Refresh-Token
+        $tokens = $auth->getTokens();
+        $csrfToken = null;
+        if (!empty($tokens['refresh'])) {
+            $csrfToken = $auth->refresh($tokens['refresh']); // erstellt neue Tokens und setzt Cookies
+        }
+        return $csrfToken; // gibt neuen CSRF-Token zurück oder null
     }
 }
