@@ -212,9 +212,13 @@ class Auth
     }
 
     /**
-     * Refresh-Token verarbeiten: Wenn gültig, neue Token generieren und alten Refresh-Token sperren.
+     * Refresh-Token verarbeiten: Wenn gültig, neue Token generieren, alten Refresh-Token sperren
+     * und die neuen Tokens als Cookies setzen.
+     *
+     * @param string $refreshToken
+     * @return array{user_id: string, csrf_token: string}|null An array containing the user ID and the new CSRF token on success, or null on failure.
      */
-    public function refresh(string $refreshToken): ?string // Changed return type hint
+    public function refresh(string $refreshToken): ?array
     {
         try {
             $decoded = JWT::decode($refreshToken, new Key($this->config->secret, $this->config->algo));
@@ -227,11 +231,19 @@ class Auth
                 return null;
             }
 
-            // Refresh-Token blacklisten
+            // Alten Refresh-Token blacklisten
             $this->storage->blacklist($decoded->jti);
 
-            // Neue Tokens ausstellen
-            return $this->issueAuthCookies($decoded->sub); // Use the new method to set cookies
+            // Neue Tokens ausstellen und Cookies setzen
+            $newCsrfToken = $this->issueAuthCookies($decoded->sub);
+            if ($newCsrfToken === null) {
+                return null; // Ensure null is returned if CSRF token generation fails
+            }
+
+            return [
+                'user_id' => $decoded->sub,
+                'csrf_token' => $newCsrfToken,
+            ];
         } catch (\Throwable $e) {
             return null;
         }
@@ -260,18 +272,43 @@ class Auth
         return $isBlacklisted;
     }
 
-    // TODO großes TODO. Die Funktion muss angepasst werden.
-    function checkAndRefreshTokens($token) {
-        $userId = $auth->validate(); // prüft Access-Token aus Cookie
-        if ($userId !== null) {
-            return $userId; // Access-Token gültig
+    /**
+     * Authentifiziert eine Anfrage durch Validierung des Access-Tokens. Wenn der Access-Token
+     * ungültig oder abgelaufen ist, wird versucht, mit dem Refresh-Token neue Tokens auszustellen.
+     *
+     * Diese Methode ist der empfohlene Einstiegspunkt für die Authentifizierung bei jeder Anfrage.
+     *
+     * Wichtiger Hinweis: Diese Methode validiert NICHT den CSRF-Token. Die CSRF-Validierung
+     * sollte für zustandsändernde Anfragen (POST, PUT, DELETE etc.) separat mit
+     * `validateCsrfToken()` durchgeführt werden, nachdem diese Methode erfolgreich war.
+     *
+     * @return ?string Die User-ID bei erfolgreicher Authentifizierung (entweder durch einen
+     *                 gültigen Access-Token oder einen erfolgreichen Refresh), oder null,
+     *                 wenn die Authentifizierung fehlschlägt.
+     */
+    public function authenticateFromRequest(): ?string
+    {
+        $tokens = $this->getTokens();
+
+        // 1. Versuchen, den Access-Token zu validieren
+        if (!empty($tokens['access'])) {
+            $userId = $this->validate($tokens['access']);
+            if ($userId !== null) {
+                return $userId; // Access-Token ist gültig
+            }
         }
-        // Access-Token ungültig, prüfe Refresh-Token
-        $tokens = $auth->getTokens();
-        $csrfToken = null;
+
+        // 2. Access-Token ist ungültig, abgelaufen oder fehlt. Refresh versuchen.
         if (!empty($tokens['refresh'])) {
-            $csrfToken = $auth->refresh($tokens['refresh']); // erstellt neue Tokens und setzt Cookies
+            $refreshResult = $this->refresh($tokens['refresh']);
+            if ($refreshResult !== null) {
+                // Refresh war erfolgreich, neue Cookies wurden gesetzt.
+                // Die Anfrage kann als authentifiziert betrachtet werden.
+                return $refreshResult['user_id'];
+            }
         }
-        return $csrfToken; // gibt neuen CSRF-Token zurück oder null
+
+        // 3. Kein gültiger Access-Token und kein (gültiger) Refresh-Token gefunden.
+        return null;
     }
 }
