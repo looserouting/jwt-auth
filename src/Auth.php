@@ -177,7 +177,7 @@ class Auth
     /**
      * Prüft ein JWT-Access-Token und gibt die Benutzer-ID zurück, wenn gültig.
      */
-    public function validate(string $token): ?string
+    private function validate(string $token): ?string
     {
         try {
             $decoded = JWT::decode($token, new Key($this->config->secret, $this->config->algo));
@@ -202,7 +202,7 @@ class Auth
      * @param string $accessToken Der Access-Token, typischerweise aus dem Cookie.
      * @return bool True, wenn die Tokens gültig und aneinander gebunden sind, sonst false.
      */
-    public function validateCsrfToken(string $requestCsrfToken, string $cookieCsrfToken, string $accessToken): bool
+    private function validateCsrfToken(string $requestCsrfToken, string $cookieCsrfToken, string $accessToken): bool
     {
         // 1. Standard "Double Submit" Prüfung: Stimmen Header und Cookie überein?
         if (empty($requestCsrfToken) || !hash_equals($cookieCsrfToken, $requestCsrfToken)) {
@@ -302,7 +302,8 @@ class Auth
     }
 
     /**
-     * Authentifiziert eine Anfrage durch Validierung des Access-Tokens. Wenn der Access-Token
+     * Authentifiziert eine Anfrage durch Validierung des Access-Tokens **und** CSRF-Tokens (Double Submit).
+     * Der CSRF-Token wird zusätzlich geprüft, um Manipulationen zu verhindern. Wenn der Access-Token
      * ungültig oder abgelaufen ist, wird versucht, mit dem Refresh-Token neue Tokens auszustellen.
      *
      * Diese Methode ist der empfohlene Einstiegspunkt für die Authentifizierung bei jeder Anfrage.
@@ -311,16 +312,10 @@ class Auth
      * sollte für zustandsändernde Anfragen (POST, PUT, DELETE etc.) separat mit
      * `validateCsrfToken()` durchgeführt werden, nachdem diese Methode erfolgreich war.
      *
+     * @param string|null $requestCsrfToken Der CSRF-Token aus dem Request-Header, z.B. X-CSRF-TOKEN
      * @return ?string Die User-ID bei erfolgreicher Authentifizierung (entweder durch einen
      *                 gültigen Access-Token oder einen erfolgreichen Refresh), oder null,
      *                 wenn die Authentifizierung fehlschlägt.
-     */
-    /**
-     * Authentifiziert eine Anfrage durch Validierung des Access-Tokens **und** CSRF-Tokens (Double Submit).
-     * Der CSRF-Token wird zusätzlich geprüft, um Manipulationen zu verhindern.
-     *
-     * @param string|null $requestCsrfToken Der CSRF-Token aus dem Request-Header, z.B. X-CSRF-TOKEN
-     * @return ?string Die User-ID bei erfolgreicher Authentifizierung und CSRF-Prüfung, sonst null.
      */
     public function authenticateFromRequest(?string $requestCsrfToken = null): ?string
     {
