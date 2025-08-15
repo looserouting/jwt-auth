@@ -169,9 +169,9 @@ class Auth
             'samesite' => $this->config->cookieSameSite,
         ];
 
-        setcookie($this->config->accessTokenCookieName, '', $options + ['httponly' => true]);
-        setcookie($this->config->refreshTokenCookieName, '', $options + ['httponly' => true]);
-        setcookie($this->config->csrfTokenCookieName, '', $options + ['httponly' => false]);
+        setcookie($this->config->accessTokenCookieName, '', array_merge($options, ['httponly' => true]));
+        setcookie($this->config->refreshTokenCookieName, '', array_merge($options, ['httponly' => true]));
+        setcookie($this->config->csrfTokenCookieName, '', array_merge($options, ['httponly' => false]));
     }
 
     /**
@@ -333,7 +333,7 @@ class Auth
             if ($refreshResult !== null) {
                 // Refresh war erfolgreich, neue Cookies wurden gesetzt.
                 // Die Anfrage kann als authentifiziert betrachtet werden.
-                return $refreshResult['user_id']; // Jetzt korrekt
+                return $refreshResult['user_id'];
             }
         }
 
