@@ -5,10 +5,8 @@
  * @returns {string|null} The cookie value or null if not found.
  */
 function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return null;
+    const match = document.cookie.match(new RegExp(`(^|;\s*)${name}=([^;]+)`));
+    return match ? match[2] : null;
 }
 
 /**
