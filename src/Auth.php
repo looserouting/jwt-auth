@@ -1,24 +1,27 @@
 <?php
 
+declare(strict_types=1);
+
 namespace JwtAuth;
 
+use Firebase\JWT\BeforeValidException;
+use Firebase\JWT\ExpiredException;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
+use Firebase\JWT\SignatureInvalidException;
+use InvalidArgumentException;
 use JwtAuth\Storage\TokenStorageInterface;
+use UnexpectedValueException;
 
 class Auth
 {
-    private Config $config;
-    private TokenStorageInterface $storage;
-
-
-    public function __construct(Config $config, TokenStorageInterface $storage)
-    {
-        $this->config = $config;
-        $this->storage = $storage;
+    public function __construct(
+        private readonly Config $config,
+        private readonly TokenStorageInterface $storage,
+    ) {
     }
 
-        /**
+    /**
      * Liest Access-Token, Refresh-Token und CSRF-Token aus den Cookies aus.
      *
      * @return array{access: ?string, refresh: ?string, csrf: ?string}
@@ -42,28 +45,11 @@ class Auth
      *
      * @return array{access: string, refresh: string, csrf_token: string}
      */
-    public function generateTokens(string $userId): array // Changed return type hint in docblock
+    public function generateTokens(string $userId): array
     {
-        $now = time();
-        $csrfToken = bin2hex(random_bytes($this->config->csrfTokenLength));
-        $csrfHash = hash('sha256', $csrfToken);
-
-        $accessJti = bin2hex(random_bytes(16));
-        $accessToken = JWT::encode([
-            'sub' => $userId,
-            'jti' => $accessJti,
-            'iat' => $now,
-            'exp' => $now + $this->config->accessTokenTTL,
-            'csrf' => $csrfHash, // CSRF Token Binding
-        ], $this->config->secret, $this->config->algo);
-
-        $refreshJti = bin2hex(random_bytes(16));
-        $refreshToken = JWT::encode([
-            'sub' => $userId,
-            'jti' => $refreshJti,
-            'iat' => $now,
-            'exp' => $now + $this->config->refreshTokenTTL,
-        ], $this->config->secret, $this->config->algo);
+        $csrfToken = $this->generateCsrfToken();
+        $accessToken = $this->generateAccessToken($userId, $csrfToken);
+        $refreshToken = $this->generateRefreshToken($userId);
 
         return [
             'access' => $accessToken,
@@ -73,11 +59,52 @@ class Auth
     }
 
     /**
+     * Erzeugt einen sicheren CSRF-Token.
+     */
+    private function generateCsrfToken(): string
+    {
+        return bin2hex(random_bytes($this->config->csrfTokenLength));
+    }
+
+    /**
+     * Erzeugt ein Access-Token für eine Benutzer-ID, das an einen CSRF-Token gebunden ist.
+     */
+    private function generateAccessToken(string $userId, string $csrfToken): string
+    {
+        $now = time();
+        $csrfHash = hash('sha256', $csrfToken);
+        $accessJti = bin2hex(random_bytes(16));
+
+        return JWT::encode([
+            'sub' => $userId,
+            'jti' => $accessJti,
+            'iat' => $now,
+            'exp' => $now + $this->config->accessTokenTTL,
+            'csrf' => $csrfHash, // CSRF Token Binding
+        ], $this->config->secret, $this->config->algo);
+    }
+
+    /**
+     * Erzeugt ein Refresh-Token für eine Benutzer-ID.
+     */
+    private function generateRefreshToken(string $userId): string
+    {
+        $now = time();
+        $refreshJti = bin2hex(random_bytes(16));
+
+        return JWT::encode([
+            'sub' => $userId,
+            'jti' => $refreshJti,
+            'iat' => $now,
+            'exp' => $now + $this->config->refreshTokenTTL,
+        ], $this->config->secret, $this->config->algo);
+    }
+
+    /**
      * Setzt Access- und Refresh-Tokens als HTTP-only Cookies und den CSRF-Token
      * als reguläres, für JavaScript lesbares Cookie.
      *
      * @param string $userId
-     * @return string Der generierte CSRF-Token (für die Client-Antwort).
      */
     public function issueAuthCookies(string $userId): string
     {
@@ -134,25 +161,17 @@ class Auth
      */
     public function clearAuthCookies(): void
     {
-        $now = time(); // Current time
-
-        // Set expiration to a past date to delete the cookie
-        $pastTime = $now - 3600; // 1 hour in the past
-
-        $cookieOptions = [
-            'expires' => $pastTime,
+        $options = [
+            'expires' => time() - 3600,
             'path' => $this->config->cookiePath,
             'domain' => $this->config->cookieDomain,
             'secure' => $this->config->cookieSecure,
             'samesite' => $this->config->cookieSameSite,
         ];
 
-        // Access Token Cookie (HTTP-only)
-        setcookie($this->config->accessTokenCookieName, '', array_merge($cookieOptions, ['httponly' => true]));
-        // Refresh Token Cookie (HTTP-only)
-        setcookie($this->config->refreshTokenCookieName, '', array_merge($cookieOptions, ['httponly' => true]));
-        // CSRF Token Cookie (NOT HTTP-only)
-        setcookie($this->config->csrfTokenCookieName, '', array_merge($cookieOptions, ['httponly' => false]));
+        setcookie($this->config->accessTokenCookieName, '', $options + ['httponly' => true]);
+        setcookie($this->config->refreshTokenCookieName, '', $options + ['httponly' => true]);
+        setcookie($this->config->csrfTokenCookieName, '', $options + ['httponly' => false]);
     }
 
     /**
@@ -168,7 +187,7 @@ class Auth
             }
 
             return $decoded->sub ?? null;
-        } catch (\Throwable $e) {
+        } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
             return null;
         }
     }
@@ -204,7 +223,7 @@ class Auth
 
             // Vergleichen des Hash aus dem Access-Token mit dem berechneten Hash
             return hash_equals($decodedAccessToken->csrf, $requestCsrfHash);
-        } catch (\Throwable) {
+        } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
             // Wenn der Access-Token ungültig ist (z.B. abgelaufen, falsche Signatur),
             // ist die CSRF-Prüfung ebenfalls fehlgeschlagen.
             return false;
@@ -214,12 +233,17 @@ class Auth
     /**
      * Refresh-Token verarbeiten: Wenn gültig, neue Token generieren, alten Refresh-Token sperren
      * und die neuen Tokens als Cookies setzen.
+     * Der Refresh-Token wird dabei direkt aus dem Cookie gelesen.
      *
-     * @param string $refreshToken
-     * @return array{user_id: string, csrf_token: string}|null An array containing the user ID and the new CSRF token on success, or null on failure.
+     * @return ?array Gibt bei Erfolg ein Array mit 'user_id' und 'csrf_token' zurück, sonst null.
      */
-    public function refresh(string $refreshToken): ?array
+    public function refresh(): ?array
     {
+        $refreshToken = $_COOKIE[$this->config->refreshTokenCookieName] ?? null;
+        if ($refreshToken === null) {
+            return null;
+        }
+
         try {
             $decoded = JWT::decode($refreshToken, new Key($this->config->secret, $this->config->algo));
 
@@ -236,39 +260,44 @@ class Auth
 
             // Neue Tokens ausstellen und Cookies setzen
             $newCsrfToken = $this->issueAuthCookies($decoded->sub);
-            if ($newCsrfToken === null) {
-                return null; // Ensure null is returned if CSRF token generation fails
-            }
-
+            
             return [
                 'user_id' => $decoded->sub,
                 'csrf_token' => $newCsrfToken,
             ];
-        } catch (\Throwable $e) {
+        } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
             return null;
         }
     }
 
     /**
-     * JWT-Token manuell sperren und Auth-Cookies löschen (z.B. beim Logout).
-     * Das Löschen der Cookies wird immer versucht, auch wenn der Token ungültig ist.
+     * Meldet den Benutzer ab, indem der aktuelle Access-Token auf die Blacklist gesetzt
+     * und alle Authentifizierungs-Cookies gelöscht werden.
+     * Diese Methode sollte von Ihrem Logout-Endpunkt aufgerufen werden.
+     *
+     * @return bool True, wenn der Token erfolgreich gefunden und auf die Blacklist gesetzt wurde, sonst false.
+     *              Hinweis: Cookies werden unabhängig davon gelöscht, ob ein Token gefunden wurde.
      */
-    public function blacklist(string $token): bool // Added clearAuthCookies
+    public function logout(): bool
     {
+        $accessToken = $_COOKIE[$this->config->accessTokenCookieName] ?? null;
         $isBlacklisted = false;
-        try {
-            $decoded = JWT::decode($token, new Key($this->config->secret, $this->config->algo));
 
-            if (isset($decoded->jti)) {
-                $this->storage->blacklist($decoded->jti);
-                $isBlacklisted = true;
+        if ($accessToken) {
+            try {
+                $decoded = JWT::decode($accessToken, new Key($this->config->secret, $this->config->algo));
+
+                if (isset($decoded->jti)) {
+                    $this->storage->blacklist($decoded->jti);
+                    $isBlacklisted = true;
+                }
+            } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
+                // Token war nicht dekodierbar (z.B. abgelaufen, ungültig).
+                // Das Blacklisting ist nicht möglich, aber die Cookies müssen trotzdem gelöscht werden.
             }
-        } catch (\Throwable) {
-            // Token war nicht dekodierbar (z.B. abgelaufen, ungültig).
-            // Das Blacklisting ist nicht möglich, aber die Cookies müssen trotzdem gelöscht werden.
         }
-        
-        $this->clearAuthCookies(); // Wichtig: Immer Cookies löschen beim Logout-Versuch.
+
+        $this->clearAuthCookies(); // Wichtig: Cookies bei jedem Logout-Versuch löschen.
         return $isBlacklisted;
     }
 
@@ -300,11 +329,11 @@ class Auth
 
         // 2. Access-Token ist ungültig, abgelaufen oder fehlt. Refresh versuchen.
         if (!empty($tokens['refresh'])) {
-            $refreshResult = $this->refresh($tokens['refresh']);
+            $refreshResult = $this->refresh();
             if ($refreshResult !== null) {
                 // Refresh war erfolgreich, neue Cookies wurden gesetzt.
                 // Die Anfrage kann als authentifiziert betrachtet werden.
-                return $refreshResult['user_id'];
+                return $refreshResult['user_id']; // Jetzt korrekt
             }
         }
 
