@@ -1,6 +1,24 @@
 <?php
 namespace JwtAuth;
 
+/**
+ * Class Config
+ *
+ * Configuration holder for JWT authentication.
+ *
+ * @property string $accessTokenCookieName Name of the Access Token cookie.
+ * @property string $refreshTokenCookieName Name of the Refresh Token cookie.
+ * @property string $csrfTokenCookieName Name of the CSRF Token cookie.
+ * @property int $csrfTokenLength Length of the CSRF token in bytes.
+ * @property int $accessTokenTTL Access Token time-to-live in seconds.
+ * @property int $refreshTokenTTL Refresh Token time-to-live in seconds.
+ * @property string $secret Secret key for JWT signing.
+ * @property string $algo Algorithm used for JWT.
+ * @property string $cookiePath Cookie path for authentication tokens.
+ * @property string $cookieDomain Domain for cookies.
+ * @property bool $cookieSecure Set true for Secure cookies.
+ * @property string $cookieSameSite SameSite value for cookies.
+ */
 class Config {
     public function __construct(
         public readonly string $secret,

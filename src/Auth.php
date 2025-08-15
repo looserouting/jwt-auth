@@ -22,7 +22,7 @@ class Auth
     }
 
     /**
-     * Liest Access-Token, Refresh-Token und CSRF-Token aus den Cookies aus.
+     * Reads access token, refresh token, and CSRF token from the cookies.
      *
      * @return array{access: ?string, refresh: ?string, csrf: ?string}
      */
@@ -40,8 +40,7 @@ class Auth
 
     
     /**
-     * Erzeugt ein Access- und ein Refresh-Token für eine Benutzer-ID.
-     * Sowie einen CSRF-Token.
+     * Generates access token, refresh token, and CSRF token for a user ID.
      *
      * @return array{access: string, refresh: string, csrf_token: string}
      */
@@ -59,7 +58,9 @@ class Auth
     }
 
     /**
-     * Erzeugt einen sicheren CSRF-Token.
+     * Generates a secure CSRF token.
+     *
+     * @return string The generated CSRF token.
      */
     private function generateCsrfToken(): string
     {
@@ -67,7 +68,11 @@ class Auth
     }
 
     /**
-     * Erzeugt ein Access-Token für eine Benutzer-ID, das an einen CSRF-Token gebunden ist.
+     * Generates an access token for a user ID, which is bound to a CSRF token.
+     *
+     * @param string $userId The user ID.
+     * @param string $csrfToken The CSRF token to bind.
+     * @return string The generated access token.
      */
     private function generateAccessToken(string $userId, string $csrfToken): string
     {
@@ -85,7 +90,10 @@ class Auth
     }
 
     /**
-     * Erzeugt ein Refresh-Token für eine Benutzer-ID.
+     * Generates a refresh token for a user ID.
+     *
+     * @param string $userId The user ID.
+     * @return string The generated refresh token.
      */
     private function generateRefreshToken(string $userId): string
     {
@@ -101,10 +109,11 @@ class Auth
     }
 
     /**
-     * Setzt Access- und Refresh-Tokens als HTTP-only Cookies und den CSRF-Token
-     * als reguläres, für JavaScript lesbares Cookie.
+     * Sets the access and refresh tokens as HTTP-only cookies, and the CSRF token
+     * as a regular JavaScript-readable cookie.
      *
-     * @param string $userId
+     * @param string $userId The user ID.
+     * @return string The generated CSRF token
      */
     public function issueAuthCookies(string $userId): string
     {
@@ -157,7 +166,9 @@ class Auth
     }
 
     /**
-     * Löscht alle Authentifizierungs- und CSRF-Cookies.
+     * Clears all authentication and CSRF cookies.
+     *
+     * @return void
      */
     private function clearAuthCookies(): void
     {
@@ -175,7 +186,10 @@ class Auth
     }
 
     /**
-     * Prüft ein JWT-Access-Token und gibt die Benutzer-ID zurück, wenn gültig.
+     * Validates a JWT access token and returns the user ID if valid.
+     *
+     * @param string $token The JWT access token to validate.
+     * @return string|null The user ID if the token is valid, null otherwise.
      */
     private function validate(string $token): ?string
     {
@@ -193,14 +207,13 @@ class Auth
     }
 
     /**
-     * Validiert einen CSRF-Token mittels "Double Submit Cookie" und "Token Binding".
-     * Der Access-Token muss hier mitübergeben werden, um den darin enthaltenen
-     * CSRF-Hash zu vergleichen.
+     * Validates a CSRF token using the "Double Submit Cookie" and "Token Binding" technique.
+     * The access token must also be provided to compare the contained CSRF hash.
      *
-     * @param string $requestCsrfToken Der CSRF-Token aus dem Request-Header (z.B. X-CSRF-TOKEN).
-     * @param string $cookieCsrfToken Der CSRF-Token aus dem Cookie (z.B. $_COOKIE['X-CSRF-TOKEN']).
-     * @param string $accessToken Der Access-Token, typischerweise aus dem Cookie.
-     * @return bool True, wenn die Tokens gültig und aneinander gebunden sind, sonst false.
+     * @param string $requestCsrfToken The CSRF token from the request header (e.g. X-CSRF-TOKEN).
+     * @param string $cookieCsrfToken The CSRF token from the cookie (e.g. $_COOKIE['X-CSRF-TOKEN']).
+     * @param string $accessToken The access token, typically from the cookie.
+     * @return bool True if the tokens are valid and bound together, false otherwise.
      */
     private function validateCsrfToken(string $requestCsrfToken, string $cookieCsrfToken, string $accessToken): bool
     {
@@ -231,11 +244,10 @@ class Auth
     }
 
     /**
-     * Refresh-Token verarbeiten: Wenn gültig, neue Token generieren, alten Refresh-Token sperren
-     * und die neuen Tokens als Cookies setzen.
-     * Der Refresh-Token wird dabei direkt aus dem Cookie gelesen.
+     * Processes the refresh token: if valid, generates new tokens, blacklists the old refresh token,
+     * and sets the new tokens as cookies. The refresh token is read directly from the cookie.
      *
-     * @return ?array Gibt bei Erfolg ein Array mit 'user_id' und 'csrf_token' zurück, sonst null.
+     * @return ?array Returns an array with 'user_id' and 'csrf_token' on success, otherwise null.
      */
     private function refresh(): ?array
     {
@@ -271,12 +283,11 @@ class Auth
     }
 
     /**
-     * Meldet den Benutzer ab, indem der aktuelle Access-Token auf die Blacklist gesetzt
-     * und alle Authentifizierungs-Cookies gelöscht werden.
-     * Diese Methode sollte von Ihrem Logout-Endpunkt aufgerufen werden.
+     * Logs out the user by blacklisting the current access token and removing all authentication cookies.
+     * This method should be called from your logout endpoint.
      *
-     * @return bool True, wenn der Token erfolgreich gefunden und auf die Blacklist gesetzt wurde, sonst false.
-     *              Hinweis: Cookies werden unabhängig davon gelöscht, ob ein Token gefunden wurde.
+     * @return bool True if the access token was found and blacklisted, false otherwise.
+     *              Note: Cookies are deleted regardless of whether a token was found.
      */
     public function logout(): bool
     {
@@ -302,20 +313,16 @@ class Auth
     }
 
     /**
-     * Authentifiziert eine Anfrage durch Validierung des Access-Tokens **und** CSRF-Tokens (Double Submit).
-     * Der CSRF-Token wird zusätzlich geprüft, um Manipulationen zu verhindern. Wenn der Access-Token
-     * ungültig oder abgelaufen ist, wird versucht, mit dem Refresh-Token neue Tokens auszustellen.
+     * Authenticates a request by validating the access token and optionally the CSRF token (Double Submit).
+     * If the access token is invalid or expired, it attempts to use the refresh token to issue new tokens.
      *
-     * Diese Methode ist der empfohlene Einstiegspunkt für die Authentifizierung bei jeder Anfrage.
+     * This method is the recommended entry point for authentication checks on every request.
      *
-     * Wichtiger Hinweis: Diese Methode validiert NICHT den CSRF-Token. Die CSRF-Validierung
-     * sollte für zustandsändernde Anfragen (POST, PUT, DELETE etc.) separat mit
-     * `validateCsrfToken()` durchgeführt werden, nachdem diese Methode erfolgreich war.
+     * Important: This method does NOT validate the CSRF token for state-changing requests. The CSRF validation
+     * should be performed separately via `validateCsrfToken()` after this method succeeds (for POST, PUT, DELETE, etc.).
      *
-     * @param string|null $requestCsrfToken Der CSRF-Token aus dem Request-Header, z.B. X-CSRF-TOKEN
-     * @return ?string Die User-ID bei erfolgreicher Authentifizierung (entweder durch einen
-     *                 gültigen Access-Token oder einen erfolgreichen Refresh), oder null,
-     *                 wenn die Authentifizierung fehlschlägt.
+     * @param string|null $requestCsrfToken The CSRF token from the request header, e.g. X-CSRF-TOKEN
+     * @return string|null The user ID on successful authentication (valid access token or refresh), null on failure.
      */
     public function authenticateFromRequest(?string $requestCsrfToken = null): ?string
     {
