@@ -291,20 +291,34 @@ class Auth
      */
     public function logout(): bool
     {
-        $accessToken = $_COOKIE[$this->config->accessTokenCookieName] ?? null;
+        $tokens = $this->getTokens();
+        $accessToken = $tokens['access'];
+        $refreshToken = $tokens['refresh'];
         $isBlacklisted = false;
 
+        // Access Token blacklisten
         if ($accessToken) {
             try {
                 $decoded = JWT::decode($accessToken, new Key($this->config->secret, $this->config->algo));
-
                 if (isset($decoded->jti)) {
                     $this->storage->blacklist($decoded->jti);
                     $isBlacklisted = true;
                 }
             } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
                 // Token war nicht dekodierbar (z.B. abgelaufen, ungültig).
-                // Das Blacklisting ist nicht möglich, aber die Cookies müssen trotzdem gelöscht werden.
+            }
+        }
+
+        // Refresh Token blacklisten
+        if ($refreshToken) {
+            try {
+                $decodedRefresh = JWT::decode($refreshToken, new Key($this->config->secret, $this->config->algo));
+                if (isset($decodedRefresh->jti)) {
+                    $this->storage->blacklist($decodedRefresh->jti);
+                    $isBlacklisted = true;
+                }
+            } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
+                // Token war nicht dekodierbar
             }
         }
 

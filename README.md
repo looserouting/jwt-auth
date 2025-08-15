@@ -34,13 +34,13 @@ echo json_encode(['csrf_token' => $csrfToken]);
 
 ## validate tokens
 ```php
-$tokens = auth->getTokens();
-$userId = $auth->validate($tokens['access']);
+$userId = $auth->authenticateFromRequest();
 echo "User-ID: " . ($userId ?? 'unknown') . "\n";
 ```
 
-## refresh token
-$newTokens = $auth->refresh($tokens['refresh']);
+## logout
+```
+$auth-logout();
 ```
 
 # Explanation of the New Configuration Options:
