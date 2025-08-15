@@ -26,7 +26,7 @@ class Auth
      *
      * @return array{access: ?string, refresh: ?string, csrf: ?string}
      */
-    public function getTokens(): array
+    private function getTokens(): array
     {
         $access = $_COOKIE[$this->config->accessTokenCookieName] ?? null;
         $refresh = $_COOKIE[$this->config->refreshTokenCookieName] ?? null;
@@ -45,7 +45,7 @@ class Auth
      *
      * @return array{access: string, refresh: string, csrf_token: string}
      */
-    public function generateTokens(string $userId): array
+    private function generateTokens(string $userId): array
     {
         $csrfToken = $this->generateCsrfToken();
         $accessToken = $this->generateAccessToken($userId, $csrfToken);
@@ -159,7 +159,7 @@ class Auth
     /**
      * Löscht alle Authentifizierungs- und CSRF-Cookies.
      */
-    public function clearAuthCookies(): void
+    private function clearAuthCookies(): void
     {
         $options = [
             'expires' => time() - 3600,
@@ -237,7 +237,7 @@ class Auth
      *
      * @return ?array Gibt bei Erfolg ein Array mit 'user_id' und 'csrf_token' zurück, sonst null.
      */
-    public function refresh(): ?array
+    private function refresh(): ?array
     {
         $refreshToken = $_COOKIE[$this->config->refreshTokenCookieName] ?? null;
         if ($refreshToken === null) {
@@ -315,7 +315,14 @@ class Auth
      *                 gültigen Access-Token oder einen erfolgreichen Refresh), oder null,
      *                 wenn die Authentifizierung fehlschlägt.
      */
-    public function authenticateFromRequest(): ?string
+    /**
+     * Authentifiziert eine Anfrage durch Validierung des Access-Tokens **und** CSRF-Tokens (Double Submit).
+     * Der CSRF-Token wird zusätzlich geprüft, um Manipulationen zu verhindern.
+     *
+     * @param string|null $requestCsrfToken Der CSRF-Token aus dem Request-Header, z.B. X-CSRF-TOKEN
+     * @return ?string Die User-ID bei erfolgreicher Authentifizierung und CSRF-Prüfung, sonst null.
+     */
+    public function authenticateFromRequest(?string $requestCsrfToken = null): ?string
     {
         $tokens = $this->getTokens();
 
@@ -323,7 +330,16 @@ class Auth
         if (!empty($tokens['access'])) {
             $userId = $this->validate($tokens['access']);
             if ($userId !== null) {
-                return $userId; // Access-Token ist gültig
+                // Nach erfolgreicher Access-Token-Prüfung CSRF validieren
+                // Die Prüfung ist nur relevant für zustandsändernde Requests (POST, PUT, DELETE),
+                // daher wird der CSRF-Header nur geprüft, falls er mitgegeben wird
+                if ($requestCsrfToken !== null) {
+                    // token in cookie und access werden für die bindung benötigt
+                    if (!$this->validateCsrfToken($requestCsrfToken, $tokens['csrf'], $tokens['access'])) {
+                        return null; // CSRF ungültig
+                    }
+                }
+                return $userId; // Access- und ggf. CSRF-Token sind gültig
             }
         }
 
