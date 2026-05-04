@@ -16,22 +16,29 @@ class ValkeyTokenStorage implements TokenStorageInterface {
     private Redis $redis;
 
     /**
+     * @var int TTL for blacklisted tokens in seconds.
+     */
+    private int $ttl;
+
+    /**
      * Constructor.
      *
      * @param Redis $redis A connected Redis client instance.
+     * @param int $ttl TTL for blacklisted tokens (default 7 days).
      */
-    public function __construct(Redis $redis) {
+    public function __construct(Redis $redis, int $ttl = 604800) {
         $this->redis = $redis;
+        $this->ttl = $ttl;
     }
 
     /**
-     * Blacklists a JWT ID (jti) by storing it in Redis with a 14-day expiration.
+     * Blacklists a JWT ID (jti) by storing it in Redis.
      *
      * @param string $jti JWT ID to blacklist.
      * @return void
      */
     public function blacklist(string $jti): void {
-        $this->redis->setex("jwt:blacklist:$jti", 3600 * 24 * 14, 1); // e.g. 14 days
+        $this->redis->setex("jwt:blacklist:$jti", $this->ttl, 1);
     }
 
     /**

@@ -33,6 +33,7 @@ class Config {
         public readonly string $cookieDomain = '', // e.g., '.yourdomain.com', empty means same domain
         public readonly string $cookiePath = '/', // slash means all paths
         public readonly bool $cookieSecure = false, // Set to true in production with HTTPS
-        public readonly string $cookieSameSite = 'Lax' // 'Lax', 'Strict', 'None'
+        public readonly string $cookieSameSite = 'Lax', // 'Lax', 'Strict', 'None'
+        public readonly int $blacklistTTL = 604800 // Default 7 days for blacklisted JTIs
     ) {}
 }

@@ -15,10 +15,25 @@ use UnexpectedValueException;
 
 class Auth
 {
+    /**
+     * @var array|null Custom cookies array for testing/abstraction.
+     */
+    private ?array $cookies;
+
     public function __construct(
         private readonly Config $config,
         private readonly TokenStorageInterface $storage,
+        ?array $cookies = null
     ) {
+        $this->cookies = $cookies;
+    }
+
+    /**
+     * Internal helper to get cookie value.
+     */
+    private function getCookie(string $name): ?string
+    {
+        return ($this->cookies ?? $_COOKIE)[$name] ?? null;
     }
 
     /**
@@ -28,13 +43,10 @@ class Auth
      */
     private function getTokens(): array
     {
-        $access = $_COOKIE[$this->config->accessTokenCookieName] ?? null;
-        $refresh = $_COOKIE[$this->config->refreshTokenCookieName] ?? null;
-        $csrf = $_COOKIE[$this->config->csrfTokenCookieName] ?? null;
         return [
-            'access' => $access,
-            'refresh' => $refresh,
-            'csrf' => $csrf,
+            'access' => $this->getCookie($this->config->accessTokenCookieName),
+            'refresh' => $this->getCookie($this->config->refreshTokenCookieName),
+            'csrf' => $this->getCookie($this->config->csrfTokenCookieName),
         ];
     }
 
@@ -109,6 +121,17 @@ class Auth
     }
 
     /**
+     * Sets a cookie. This can be overridden for custom cookie handling.
+     */
+    protected function setCookie(string $name, string $value, array $options): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        setcookie($name, $value, $options);
+    }
+
+    /**
      * Sets the access and refresh tokens as HTTP-only cookies, and the CSRF token
      * as a regular JavaScript-readable cookie.
      *
@@ -121,7 +144,7 @@ class Auth
         $now = time();
 
         // Access Token Cookie (HTTP-only)
-        setcookie(
+        $this->setCookie(
             $this->config->accessTokenCookieName,
             $tokens['access'],
             [
@@ -135,7 +158,7 @@ class Auth
         );
 
         // Refresh Token Cookie (HTTP-only)
-        setcookie(
+        $this->setCookie(
             $this->config->refreshTokenCookieName,
             $tokens['refresh'],
             [
@@ -149,7 +172,7 @@ class Auth
         );
 
         // CSRF Token Cookie (NOT HTTP-only, so JavaScript can read it for double-submit pattern)
-        setcookie(
+        $this->setCookie(
             $this->config->csrfTokenCookieName,
             $tokens['csrf_token'],
             [
@@ -180,9 +203,9 @@ class Auth
             'samesite' => $this->config->cookieSameSite,
         ];
 
-        setcookie($this->config->accessTokenCookieName, '', array_merge($options, ['httponly' => true]));
-        setcookie($this->config->refreshTokenCookieName, '', array_merge($options, ['httponly' => true]));
-        setcookie($this->config->csrfTokenCookieName, '', array_merge($options, ['httponly' => false]));
+        $this->setCookie($this->config->accessTokenCookieName, '', array_merge($options, ['httponly' => true]));
+        $this->setCookie($this->config->refreshTokenCookieName, '', array_merge($options, ['httponly' => true]));
+        $this->setCookie($this->config->csrfTokenCookieName, '', array_merge($options, ['httponly' => false]));
     }
 
     /**
@@ -201,7 +224,12 @@ class Auth
             }
 
             return $decoded->sub ?? null;
-        } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
+        } catch (ExpiredException) {
+            // Token is expired, expected during normal usage (triggers refresh)
+            return null;
+        } catch (SignatureInvalidException | BeforeValidException | UnexpectedValueException | InvalidArgumentException $e) {
+            // Potential security issue or malformed token
+            // In a real app, you might want to log this: error_log("JWT Validation failed: " . $e->getMessage());
             return null;
         }
     }
@@ -236,7 +264,7 @@ class Auth
 
             // Vergleichen des Hash aus dem Access-Token mit dem berechneten Hash
             return hash_equals($decodedAccessToken->csrf, $requestCsrfHash);
-        } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
+        } catch (\Exception) {
             // Wenn der Access-Token ungültig ist (z.B. abgelaufen, falsche Signatur),
             // ist die CSRF-Prüfung ebenfalls fehlgeschlagen.
             return false;
@@ -251,7 +279,7 @@ class Auth
      */
     private function refresh(): ?array
     {
-        $refreshToken = $_COOKIE[$this->config->refreshTokenCookieName] ?? null;
+        $refreshToken = $this->getCookie($this->config->refreshTokenCookieName);
         if ($refreshToken === null) {
             return null;
         }
@@ -264,6 +292,8 @@ class Auth
             }
 
             if ($this->storage->isBlacklisted($decoded->jti)) {
+                // If a refresh token is reused after being blacklisted, it might be a breach.
+                // You could consider revoking ALL tokens for this user here.
                 return null;
             }
 
@@ -277,7 +307,7 @@ class Auth
                 'user_id' => $decoded->sub,
                 'csrf_token' => $newCsrfToken,
             ];
-        } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
+        } catch (\Exception) {
             return null;
         }
     }
@@ -304,7 +334,7 @@ class Auth
                     $this->storage->blacklist($decoded->jti);
                     $isBlacklisted = true;
                 }
-            } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
+            } catch (\Exception) {
                 // Token war nicht dekodierbar (z.B. abgelaufen, ungültig).
             }
         }
@@ -317,7 +347,7 @@ class Auth
                     $this->storage->blacklist($decodedRefresh->jti);
                     $isBlacklisted = true;
                 }
-            } catch (InvalidArgumentException | UnexpectedValueException | SignatureInvalidException | BeforeValidException | ExpiredException) {
+            } catch (\Exception) {
                 // Token war nicht dekodierbar
             }
         }
@@ -351,7 +381,7 @@ class Auth
                 // daher wird der CSRF-Header nur geprüft, falls er mitgegeben wird
                 if ($requestCsrfToken !== null) {
                     // token in cookie und access werden für die bindung benötigt
-                    if (!$this->validateCsrfToken($requestCsrfToken, $tokens['csrf'], $tokens['access'])) {
+                    if (!$this->validateCsrfToken($requestCsrfToken, $tokens['csrf'] ?? '', $tokens['access'])) {
                         return null; // CSRF ungültig
                     }
                 }
